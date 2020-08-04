@@ -1,0 +1,127 @@
+#+TITLE: Ethereum: run a private network with geth
+#+PROPERTY: header-args :session *shell geth* :results silent raw
+
+** Preparation
+
+Install 3 nodes with docker.
+
+** Pull geth docker image
+
+At each node.
+
+#+BEGIN_SRC sh
+docker pull ethereum/client-go
+#+END_SRC
+
+** See help
+
+#+BEGIN_SRC sh
+docker run --rm ethereum/client-go --help
+#+END_SRC
+
+** Create volume
+
+At each node.
+
+#+BEGIN_SRC sh
+docker volume create geth-data
+#+END_SRC
+
+** Generate addresses
+
+At mining node.
+
+#+BEGIN_SRC sh
+docker run --rm --mount source=geth-data,target=/root/.ethereum -it ethereum/client-go account new
+#+END_SRC
+
+Enter password.
+
+Save the address. For example, 0x0b00eE34d8C298C5dbf51814f0942e7A3ADcDB91.
+
+** Configure genesis block
+
+We are using PoA (clique) consensus.
+
+1. Select random chainId.
+
+2. Replace addresses in extradata and alloc.
+
+Copy this file at each node.
+
+#+BEGIN_SRC conf :tangle :tangle genesis.json
+{
+  "config": {
+    "chainId": 65165461561,
+    "homesteadBlock": 0,
+    "eip150Block": 0,
+    "eip155Block": 0,
+    "eip158Block": 0,
+    "byzantiumBlock": 0,
+    "constantinopleBlock": 0,
+    "petersburgBlock": 0,
+    "clique": {
+      "period": 5,
+      "epoch": 30000
+    }
+  },
+  "difficulty": "1",
+  "gasLimit": "8000000",
+  "extradata": "0x00000000000000000000000000000000000000000000000000000000000000000b00eE34d8C298C5dbf51814f0942e7A3ADcDB910000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "alloc": {
+    "0x0b00eE34d8C298C5dbf51814f0942e7A3ADcDB91": { "balance": "1000000000000000000000000000000000" }
+  }
+}
+#+END_SRC
+
+** Initializing the Geth Database
+
+At each node.
+
+#+BEGIN_SRC sh
+docker run --rm --mount source=geth-data,target=/root/.ethereum -v`pwd`/genesis.json:/etc/genesis.json -it ethereum/client-go init /etc/genesis.json
+#+END_SRC
+
+** Run mining node
+
+#+BEGIN_SRC sh
+docker run --rm --name geth-private --detach --network host --mount source=geth-data,target=/root/.ethereum -v`pwd`/password:/etc/ethereum-password -it ethereum/client-go --networkid 65165461561 --unlock 0x0b00eE34d8C298C5dbf51814f0942e7A3ADcDB91 --password /etc/ethereum-password --mine
+#+END_SRC
+
+** Get bootnode ENR
+
+#+BEGIN_SRC sh
+docker exec geth-private geth attach --exec admin.nodeInfo.enode
+#+END_SRC
+
+** Run another node
+
+#+BEGIN_SRC sh
+BOOT_NODES=
+#+END_SRC
+
+#+BEGIN_SRC sh
+docker run --rm --name geth-private --network host --mount source=geth-data,target=/root/.ethereum -it ethereum/client-go --networkid 65165461561 --http --http.addr 0.0.0.0 --bootnode $BOOT_NODES
+#+END_SRC
+
+** Run geth console
+
+#+BEGIN_SRC sh
+docker exec -it geth-private geth attach
+#+END_SRC
+
+** Show geth logs
+
+#+BEGIN_SRC sh
+docker logs geth-private
+#+END_SRC
+
+** Kill the node
+
+#+BEGIN_SRC sh
+docker kill geth-private
+#+END_SRC
+
+** References
+
+1. https://geth.ethereum.org/docs/interface/private-network
